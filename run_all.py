@@ -13,7 +13,18 @@ from alerting import send_failure_alert
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("run_all")
 
-SOURCES = ["bookings", "ga4", "gbp", "sheets"]
+# source -> module that implements run(). "sheets" points at the one-off
+# script (scripts/sheets_to_analytics.py) rather than etl/sheets_etl.py: it
+# uses a plain API key against the public Sheet, which is what's actually
+# configured and working right now, instead of the service account the
+# other three sources need.
+SOURCE_MODULES = {
+    "bookings": "etl.bookings_etl",
+    "ga4": "etl.ga4_etl",
+    "gbp": "etl.gbp_etl",
+    "sheets": "scripts.sheets_to_analytics",
+}
+SOURCES = list(SOURCE_MODULES)
 
 
 def main() -> int:
@@ -23,7 +34,7 @@ def main() -> int:
     for source in SOURCES:
         logger.info("=== Running %s ETL ===", source)
         try:
-            module = __import__(f"etl.{source}_etl", fromlist=["run"])
+            module = __import__(SOURCE_MODULES[source], fromlist=["run"])
             module.run()
         except Exception:  # noqa: BLE001 - keep going, report at the end
             tb = traceback.format_exc()

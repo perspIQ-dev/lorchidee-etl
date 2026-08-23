@@ -8,6 +8,7 @@ import re
 import sys
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -283,3 +284,10 @@ def google_credentials(scopes: list[str]):
     return service_account.Credentials.from_service_account_file(
         config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scopes
     )
+
+
+def service_account_available() -> bool:
+    """GA4/GBP need the service account file; check before using it so
+    scripts can skip with a warning instead of crashing when it's not set
+    up yet (e.g. only the Sheet, via API key, is configured so far)."""
+    return Path(config.GOOGLE_SERVICE_ACCOUNT_FILE).is_file()

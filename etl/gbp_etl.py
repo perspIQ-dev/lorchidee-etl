@@ -21,7 +21,14 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 import config
-from etl.common import date_key, google_credentials, setup_logging, track_run, upsert_location
+from etl.common import (
+    date_key,
+    google_credentials,
+    service_account_available,
+    setup_logging,
+    track_run,
+    upsert_location,
+)
 
 logger = setup_logging("gbp")
 
@@ -174,6 +181,12 @@ def load_reviews(conn, location_key: int, reviews: list[dict]) -> int:
 def run() -> None:
     import db
     db.apply_schema()
+
+    if not service_account_available():
+        logger.warning(
+            "Service account file not found at %s - skipping GBP ETL", config.GOOGLE_SERVICE_ACCOUNT_FILE
+        )
+        return
 
     creds = _creds()
     account_id, location_id, location_name = resolve_account_and_location(creds)

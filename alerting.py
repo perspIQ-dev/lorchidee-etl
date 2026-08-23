@@ -15,7 +15,7 @@ import config
 logger = logging.getLogger("alerting")
 
 RESEND_API_URL = "https://api.resend.com/emails"
-ALERT_FROM = "alerts@send.perspiq.ca"
+ALERT_FROM = "lorchidee@send.lorchidee.ca"
 ALERT_TO = "yanou.yadi@gmail.com"
 ALERT_SUBJECT = "ETL Alert: lorchidee-etl failed"
 

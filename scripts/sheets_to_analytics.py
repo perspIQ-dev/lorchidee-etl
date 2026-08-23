@@ -55,14 +55,12 @@ def fetch_rows_via_api_key() -> list[list[str]]:
     return resp.get("values", [])
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Fetch, clean, and print a summary, but roll back instead of committing to Postgres.",
-    )
-    args = parser.parse_args()
-
+def run(dry_run: bool = False) -> None:
+    """Entry point used both by the CLI below and by run_all.py (which calls
+    this in place of etl/sheets_etl.py, since this is the version that
+    actually has working credentials for the Sheet right now). Raises on
+    failure - schema/connection/API errors, or anything inside load_rows
+    (track_run logs it to analytics.etl_run_log and re-raises)."""
     logger.info("Applying analytics schema (idempotent, safe if it already exists)...")
     db.apply_schema()
 
@@ -70,7 +68,7 @@ def main() -> int:
     raw_rows = fetch_rows_via_api_key()
     logger.info("Fetched %s raw rows from the sheet", len(raw_rows))
 
-    if args.dry_run:
+    if dry_run:
         # Deliberately skip track_run here: it commits analytics.etl_run_log
         # (and, since that's the same transaction, everything else) as part of
         # marking the run successful - which would commit the data before we
@@ -90,7 +88,17 @@ def main() -> int:
         rows_loaded = state["rows_loaded"]
         logger.info("Committed %s rows to analytics.fact_manual_transactions", rows_loaded)
 
-    print_summary(raw_rows, rows_loaded, dry_run=args.dry_run)
+    print_summary(raw_rows, rows_loaded, dry_run=dry_run)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Fetch, clean, and print a summary, but roll back instead of committing to Postgres.",
+    )
+    args = parser.parse_args()
+    run(dry_run=args.dry_run)
     return 0
 
 

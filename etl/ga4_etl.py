@@ -11,7 +11,14 @@ from decimal import Decimal
 from googleapiclient.discovery import build
 
 import config
-from etl.common import google_credentials, setup_logging, track_run, upsert_channel, upsert_page
+from etl.common import (
+    google_credentials,
+    service_account_available,
+    setup_logging,
+    track_run,
+    upsert_channel,
+    upsert_page,
+)
 
 logger = setup_logging("ga4")
 
@@ -147,6 +154,11 @@ def run() -> None:
 
     if not config.GA4_PROPERTY_ID:
         logger.warning("GA4_PROPERTY_ID not set - skipping GA4 ETL")
+        return
+    if not service_account_available():
+        logger.warning(
+            "Service account file not found at %s - skipping GA4 ETL", config.GOOGLE_SERVICE_ACCOUNT_FILE
+        )
         return
 
     client = _client()

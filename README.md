@@ -14,7 +14,16 @@ Studio for reporting.
 | 1 | Postgres `bookings` table (same server) | `etl/bookings_etl.py` | `analytics.fact_bookings` |
 | 2 | GA4 Data API | `etl/ga4_etl.py` | `analytics.fact_ga4_traffic_daily`, `analytics.fact_ga4_page_views_daily` |
 | 3 | Google Business Profile API | `etl/gbp_etl.py` | `analytics.fact_gbp_performance_daily`, `analytics.fact_gbp_reviews` |
-| 4 | Google Sheet (manual transaction log) | `etl/sheets_etl.py` | `analytics.fact_manual_transactions` |
+| 4 | Google Sheet (manual transaction log) | `scripts/sheets_to_analytics.py` | `analytics.fact_manual_transactions` |
+
+`run_all.py` runs the Sheet through `scripts/sheets_to_analytics.py`, not
+`etl/sheets_etl.py` - it authenticates with a plain API key against the
+public Sheet, which is what's actually set up and working today. GA4/GBP
+authenticate with the service account, which isn't configured yet, so
+`run_all.py` skips them (logs a warning, doesn't fail the run) until
+`secrets/service_account.json` exists; `etl/sheets_etl.py` also uses that
+service account and is the one to switch back to once it's in place, since
+it covers GA4/GBP too instead of needing a separate API key.
 
 ## Design
 
@@ -99,7 +108,8 @@ python run_all.py             # run all four sources
 python -m etl.bookings_etl    # or run one source at a time
 python -m etl.ga4_etl
 python -m etl.gbp_etl
-python -m etl.sheets_etl
+python scripts/sheets_to_analytics.py   # what run_all.py actually calls for the Sheet today
+python -m etl.sheets_etl                # service-account version, once GA4/GBP are set up
 ```
 
 `run_all.py` runs every source, isolates failures per-source (one bad source
@@ -108,13 +118,14 @@ mail/alerting notices.
 
 ### Failure alerting
 
-Whenever a source fails, `run_all.py` emails `yanou.yadi@gmail.com` via
-[Resend](https://resend.com) (`alerting.py`), subject `ETL Alert:
-lorchidee-etl failed`, body is the full traceback. Requires `RESEND_API_KEY`
-in `.env` and the sending domain (`send.perspiq.ca`) verified in Resend; if
-the key is unset, it just logs a warning and moves on rather than failing
-the run. A failed source is still always logged in `analytics.etl_run_log`
-regardless of whether the email sends.
+Whenever a source fails, `run_all.py` emails `yanou.yadi@gmail.com` (from
+`lorchidee@send.lorchidee.ca`) via [Resend](https://resend.com)
+(`alerting.py`), subject `ETL Alert: lorchidee-etl failed`, body is the full
+traceback. Requires `RESEND_API_KEY` in `.env` and the sending domain
+(`send.lorchidee.ca`) verified in Resend; if the key is unset, it just logs
+a warning and moves on rather than failing the run. A failed source is still
+always logged in `analytics.etl_run_log` regardless of whether the email
+sends.
 
 ## Daily cron
 
