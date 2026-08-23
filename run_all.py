@@ -1,0 +1,38 @@
+"""Runs all four ETL sources in sequence. One source failing does not stop the
+others - each is isolated and logged to analytics.etl_run_log, and this
+script exits non-zero if any source failed (so cron mail/alerting notices).
+"""
+import logging
+import sys
+
+import db
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("run_all")
+
+SOURCES = ["bookings", "ga4", "gbp", "sheets"]
+
+
+def main() -> int:
+    db.apply_schema()
+
+    failures = []
+    for source in SOURCES:
+        logger.info("=== Running %s ETL ===", source)
+        try:
+            module = __import__(f"etl.{source}_etl", fromlist=["run"])
+            module.run()
+        except Exception:  # noqa: BLE001 - keep going, report at the end
+            logger.exception("%s ETL failed", source)
+            failures.append(source)
+
+    if failures:
+        logger.error("ETL run completed with failures: %s", failures)
+        return 1
+
+    logger.info("ETL run completed successfully for all sources")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
