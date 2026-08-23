@@ -142,6 +142,23 @@ sends.
 3. Install the schedule: `crontab -e`, paste the line from `cron/crontab.example` (adjusted to your deploy path). Runs daily at 02:00 server time.
 4. Logs land in `logs/cron_YYYY-MM-DD.log` plus a per-source `logs/<source>.log`, and every run is queryable via `SELECT * FROM analytics.etl_run_log ORDER BY started_at DESC;`.
 
+## Revenue dashboard (static HTML)
+
+```bash
+python scripts/generate_dashboard.py --output /opt/lorchidee-etl/dashboard.html
+```
+
+Queries `analytics.fact_manual_transactions` once, aggregates in Python, and
+writes a self-contained HTML file (Chart.js from CDN, data embedded as JSON)
+- no live DB connection needed to view it, so it can be opened locally,
+served as a static file, or emailed. Shows total revenue, revenue over time,
+top services by revenue, and a payment-method breakdown. "Revenue" per
+transaction is `price_amount + product_sold_amount` (service charge plus any
+product upsell). Re-run it whenever you want a fresh snapshot; the output
+path defaults to `dashboard.html` next to the project if `--output` is
+omitted. `dashboard.html` is gitignored - it embeds real revenue figures and
+this repo is public.
+
 ## Looker Studio
 
 Connect Looker Studio's Postgres connector to the salon's Postgres server,

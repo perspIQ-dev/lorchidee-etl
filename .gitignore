@@ -2,6 +2,9 @@
 .env
 secrets/*.json
 logs/*.log
+# generate_dashboard.py's output embeds real revenue figures - this repo is
+# public, so never let it get committed.
+dashboard.html
 
 # --- Python (GitHub's standard Python.gitignore) -----------------------------
 # Byte-compiled / optimized / DLL files
