@@ -8,6 +8,9 @@ into Postgres today, using a plain API key (the Sheet is public) instead of
 the service account the scheduled etl/sheets_etl.py uses - no service account
 setup or sharing step needed to run this.
 
+Prerequisite: the analytics schema must already exist (`python db.py` once,
+or run this via `python run_all.py`, which applies it up front).
+
 Usage (run on a host that can reach the Postgres server, e.g. the VPS itself):
     python scripts/sheets_to_analytics.py            # fetch, clean, upsert
     python scripts/sheets_to_analytics.py --dry-run   # fetch + clean + print a
@@ -59,11 +62,10 @@ def run(dry_run: bool = False) -> None:
     """Entry point used both by the CLI below and by run_all.py (which calls
     this in place of etl/sheets_etl.py, since this is the version that
     actually has working credentials for the Sheet right now). Raises on
-    failure - schema/connection/API errors, or anything inside load_rows
-    (track_run logs it to analytics.etl_run_log and re-raises)."""
-    logger.info("Applying analytics schema (idempotent, safe if it already exists)...")
-    db.apply_schema()
-
+    failure - connection/API errors, or anything inside load_rows (track_run
+    logs it to analytics.etl_run_log and re-raises). Assumes the analytics
+    schema already exists (run `python db.py` once, or `python run_all.py`,
+    before this)."""
     logger.info("Fetching sheet %s range %s via API key...", config.GOOGLE_SHEET_ID, config.GOOGLE_SHEET_RANGE)
     raw_rows = fetch_rows_via_api_key()
     logger.info("Fetched %s raw rows from the sheet", len(raw_rows))

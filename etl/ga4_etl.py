@@ -150,7 +150,6 @@ def load_page_rows(conn, rows: list[dict]) -> int:
 
 def run() -> None:
     import db
-    db.apply_schema()
 
     if not config.GA4_PROPERTY_ID:
         logger.warning("GA4_PROPERTY_ID not set - skipping GA4 ETL")

@@ -160,7 +160,6 @@ def load_bookings(conn: psycopg.Connection, rows: list[dict]) -> int:
 
 def run() -> None:
     import db
-    db.apply_schema()
 
     with db.get_conn() as conn:
         with track_run(conn, "bookings", logger) as state:

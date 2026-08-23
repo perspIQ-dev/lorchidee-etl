@@ -101,7 +101,6 @@ def load_rows(conn, rows: list[list[str]], header_row: int = 2) -> int:
 
 def run() -> None:
     import db
-    db.apply_schema()
 
     if not config.GOOGLE_SHEET_ID:
         logger.warning("GOOGLE_SHEET_ID not set - skipping Sheets ETL")

@@ -180,7 +180,6 @@ def load_reviews(conn, location_key: int, reviews: list[dict]) -> int:
 
 def run() -> None:
     import db
-    db.apply_schema()
 
     if not service_account_available():
         logger.warning(
