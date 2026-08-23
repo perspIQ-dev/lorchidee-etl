@@ -7,7 +7,6 @@ import logging
 import sys
 import traceback
 
-import db
 from alerting import send_failure_alert
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -28,8 +27,6 @@ SOURCES = list(SOURCE_MODULES)
 
 
 def main() -> int:
-    db.apply_schema()
-
     failures = []
     for source in SOURCES:
         logger.info("=== Running %s ETL ===", source)

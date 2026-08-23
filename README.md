@@ -103,20 +103,22 @@ add its real name to the matching `CANDIDATES[...]` list.
 ## Running
 
 ```bash
-python db.py                  # run this first: creates the analytics schema (idempotent)
-python run_all.py             # run all four sources (also applies the schema up front)
-python -m etl.bookings_etl    # or run one source at a time - these assume the schema
-python -m etl.ga4_etl         # already exists (via db.py/run_all.py above), they don't
-python -m etl.gbp_etl         # apply it themselves
+python db.py                  # run this once, as a DB user with CREATE SCHEMA rights (see below)
+python run_all.py             # run all four sources
+python -m etl.bookings_etl    # or run one source at a time
+python -m etl.ga4_etl
+python -m etl.gbp_etl
 python scripts/sheets_to_analytics.py   # what run_all.py actually calls for the Sheet today
 python -m etl.sheets_etl                # service-account version, once GA4/GBP are set up
 ```
 
-Only `db.py`/`run_all.py` apply the schema - the individual ETL modules and
-`scripts/sheets_to_analytics.py` assume it already exists, on purpose (a
-past bug had every module calling `db.apply_schema()` on its own, which is
-redundant work at best and a source of surprise breakage at worst - run
-`python db.py` once after pulling instead).
+Nothing in `run_all.py` or the individual ETL modules applies the schema -
+`python db.py` is the only place that does, and it's a one-time,
+manually-run step. The day-to-day ETL Postgres role
+(`lorchidee_booking_svc`) intentionally only has DML privileges on
+`analytics.*`, not `CREATE SCHEMA`/DDL, so `db.apply_schema()` must be run
+once by a privileged role instead (and already has been, directly on the
+VPS) rather than by any of the scheduled ETL code.
 
 `run_all.py` runs every source, isolates failures per-source (one bad source
 doesn't block the others), and exits non-zero if anything failed — so cron's
