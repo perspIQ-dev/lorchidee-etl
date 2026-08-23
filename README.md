@@ -148,13 +148,19 @@ sends.
 python scripts/generate_dashboard.py --output /opt/lorchidee-etl/dashboard.html
 ```
 
-Queries `analytics.fact_manual_transactions` once, aggregates in Python, and
-writes a self-contained HTML file (Chart.js from CDN, data embedded as JSON)
-- no live DB connection needed to view it, so it can be opened locally,
-served as a static file, or emailed. Shows total revenue, revenue over time,
-top services by revenue, and a payment-method breakdown. "Revenue" per
-transaction is `price_amount + product_sold_amount` (service charge plus any
-product upsell). Re-run it whenever you want a fresh snapshot; the output
+Queries `analytics.fact_manual_transactions` once and embeds every
+transaction as JSON in a self-contained HTML file (Chart.js from CDN for
+rendering) - no live DB connection needed to view it, so it can be opened
+locally, served as a static file, or emailed. A start/end date-range picker
+(native `<input type="date">`, plus Last 7/30/90 days and All time presets -
+no charting/date-picker library beyond Chart.js) filters and re-aggregates
+every stat and chart client-side in real time: total revenue, revenue over
+time, top services by revenue, and a payment-method breakdown all
+re-compute from the same filtered slice, so the numbers always agree with
+each other. "Revenue" per transaction is `price_amount + product_sold_amount`
+(service charge plus any product upsell). Re-run it whenever you want a
+fresh snapshot (aggregation is client-side, but the underlying data is only
+as fresh as the last run); the output
 path defaults to `dashboard.html` next to the project if `--output` is
 omitted. `dashboard.html` is gitignored - it embeds real revenue figures and
 this repo is public.
