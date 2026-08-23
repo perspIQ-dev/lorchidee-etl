@@ -95,6 +95,23 @@ def date_key(d: date | datetime | None) -> int | None:
     return int(d.strftime("%Y%m%d"))
 
 
+def coerce_date(value: date | datetime | str | None) -> date | None:
+    """Source date/timestamp columns aren't always a native Postgres date
+    type - e.g. lorchidee_bookings.bookings stores booking_date as plain
+    text ("2026-08-28"), so psycopg hands back a str, not a date. Normalize
+    whatever comes back (str, date, or datetime) to a date, or None if it
+    can't be parsed."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return parse_date_ddmmyyyy(value)
+    return None
+
+
 def upsert_dimension(
     conn: psycopg.Connection,
     table: str,

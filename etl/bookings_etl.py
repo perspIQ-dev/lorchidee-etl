@@ -21,6 +21,7 @@ from psycopg.rows import dict_row
 
 import config
 from etl.common import (
+    coerce_date,
     date_key,
     parse_money,
     setup_logging,
@@ -103,10 +104,16 @@ def load_bookings(conn: psycopg.Connection, rows: list[dict]) -> int:
     with conn.cursor() as cur:
         for row in rows:
             booking_id = str(row["booking_id"])
-            booking_dt = row.get("booking_date")
+            # booking_date isn't always a native Postgres date type (the real
+            # bookings table stores it as plain text, e.g. "2026-08-28"), so
+            # normalize whatever comes back before date_key() (which needs a
+            # date/datetime) touches it.
+            booking_dt = coerce_date(row.get("booking_date"))
             dk = date_key(booking_dt)
             if dk is None:
-                logger.warning("Skipping booking %s: no usable booking_date", booking_id)
+                logger.warning(
+                    "Skipping booking %s: no usable booking_date (got %r)", booking_id, row.get("booking_date")
+                )
                 continue
 
             client_key = upsert_client(
@@ -116,7 +123,7 @@ def load_bookings(conn: psycopg.Connection, rows: list[dict]) -> int:
                 full_name=row.get("client_name"),
                 email=row.get("email"),
                 phone=row.get("phone"),
-                first_seen_date=booking_dt.date() if hasattr(booking_dt, "date") else booking_dt,
+                first_seen_date=booking_dt,
             )
             service_key = upsert_service(conn, row.get("service"))
             staff_key = upsert_staff(conn, row.get("staff"))
