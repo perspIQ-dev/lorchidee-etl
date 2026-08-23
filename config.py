@@ -28,6 +28,10 @@ ANALYTICS_SCHEMA = "analytics"
 
 # Google
 GOOGLE_SERVICE_ACCOUNT_FILE = _get("GOOGLE_SERVICE_ACCOUNT_FILE", str(BASE_DIR / "secrets" / "service_account.json"))
+# Simple read-only auth for the (public) Sheet - used by scripts/sheets_to_analytics.py.
+# The scheduled etl/sheets_etl.py still uses the service account, since that
+# also covers GA4/GBP and keeps one auth path for the daily pipeline.
+GOOGLE_API_KEY = _get("GOOGLE_API_KEY", "")
 GA4_PROPERTY_ID = _get("GA4_PROPERTY_ID", "")
 GBP_ACCOUNT_ID = _get("GBP_ACCOUNT_ID", "")
 GBP_LOCATION_ID = _get("GBP_LOCATION_ID", "")
