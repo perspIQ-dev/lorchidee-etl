@@ -1,6 +1,5 @@
-# L'Orchidee ETL - daily run at 05:00 server time (after last night's bookings
-# are settled, and before staff arrive to check dashboards).
-# Install with: crontab -e   (as the user that will own the venv/logs)
+# L'Orchidee ETL - daily run at 02:00 server time.
+# Install with: crontab -e   (as the user that owns the venv/logs)
 #
 # Adjust the path to wherever you deployed the lorchidee-etl folder on the VPS.
-0 5 * * * /opt/lorchidee-etl/cron/run_etl.sh
+0 2 * * * /opt/lorchidee-etl/cron/run_etl.sh

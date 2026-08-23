@@ -1,7 +1,12 @@
 """Source 4: Google Sheet (manual transaction log) -> analytics.fact_manual_transactions.
 
-Confirmed sheet columns (in order), A:J, header in row 1:
+The spreadsheet has multiple tabs (Visites/Clients/Depenses); this reads the
+transaction log, whose confirmed columns (in order), header in row 1, are:
   Date | ID_client | nom_client | Service | Duree (min) | Prix | Produit_vendu_$ | Produit | Methode_paiement | note
+
+GOOGLE_SHEET_RANGE has no "SheetName!" prefix by default ("A2:J"), which the
+Sheets API resolves to the first visible sheet - set it explicitly (e.g.
+"Visites!A2:J") if that tab isn't first.
 
 Dates are DD-MM-YYYY. Prix / Produit_vendu_$ are formatted like "CA$285.00".
 sheet_row_number (the actual row number in the sheet) is the idempotency key,

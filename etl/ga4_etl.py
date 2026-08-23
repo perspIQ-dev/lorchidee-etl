@@ -11,7 +11,7 @@ from decimal import Decimal
 from googleapiclient.discovery import build
 
 import config
-from etl.common import date_key, google_credentials, setup_logging, track_run, upsert_channel, upsert_page
+from etl.common import google_credentials, setup_logging, track_run, upsert_channel, upsert_page
 
 logger = setup_logging("ga4")
 

@@ -131,7 +131,7 @@ def upsert_dimension(
     ).format(
         table=sql.Identifier("analytics", table),
         cols=sql.SQL(", ").join(col_idents),
-        placeholders=sql.SQL(", ").join(sql.Placeholder() * len(all_cols)),
+        placeholders=sql.SQL(", ").join([sql.Placeholder()] * len(all_cols)),
         conflict_cols=sql.SQL(", ").join(conflict_idents),
         on_conflict=on_conflict,
         key_col=sql.Identifier(key_col),
