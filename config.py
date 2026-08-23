@@ -38,6 +38,9 @@ GBP_LOCATION_ID = _get("GBP_LOCATION_ID", "")
 GOOGLE_SHEET_ID = _get("GOOGLE_SHEET_ID", "")
 GOOGLE_SHEET_RANGE = _get("GOOGLE_SHEET_RANGE", "A2:J")
 
+# Alerting
+RESEND_API_KEY = _get("RESEND_API_KEY", "")
+
 # Misc
 LOG_LEVEL = _get("LOG_LEVEL", "INFO")
 LOG_DIR = Path(_get("LOG_DIR", str(BASE_DIR / "logs")))

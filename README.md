@@ -63,6 +63,7 @@ Fill in `.env`:
 - `GA4_PROPERTY_ID`, e.g. `properties/123456789`.
 - `GBP_ACCOUNT_ID`/`GBP_LOCATION_ID` — optional, auto-discovered if blank.
 - `GOOGLE_SHEET_ID` is already set to the salon's sheet.
+- `RESEND_API_KEY` — for failure email alerts (see below). Optional: without it, `run_all.py` just logs a warning and keeps going instead of emailing.
 
 ### Google service account
 
@@ -104,6 +105,16 @@ python -m etl.sheets_etl
 `run_all.py` runs every source, isolates failures per-source (one bad source
 doesn't block the others), and exits non-zero if anything failed — so cron's
 mail/alerting notices.
+
+### Failure alerting
+
+Whenever a source fails, `run_all.py` emails `yanou.yadi@gmail.com` via
+[Resend](https://resend.com) (`alerting.py`), subject `ETL Alert:
+lorchidee-etl failed`, body is the full traceback. Requires `RESEND_API_KEY`
+in `.env` and the sending domain (`send.perspiq.ca`) verified in Resend; if
+the key is unset, it just logs a warning and moves on rather than failing
+the run. A failed source is still always logged in `analytics.etl_run_log`
+regardless of whether the email sends.
 
 ## Daily cron
 
