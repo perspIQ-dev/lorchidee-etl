@@ -178,9 +178,12 @@ def load_reviews(conn, location_key: int, reviews: list[dict]) -> int:
     return loaded
 
 
+_SKIPPABLE_STATUSES = (403, 429)
+
+
 def run() -> int | None:
     """Returns rows loaded, or None if the source was skipped (not an error -
-    see the guard below)."""
+    see the guards below)."""
     import db
 
     if not service_account_available():
@@ -189,26 +192,34 @@ def run() -> int | None:
         )
         return None
 
-    creds = _creds()
-    account_id, location_id, location_name = resolve_account_and_location(creds)
+    try:
+        creds = _creds()
+        account_id, location_id, location_name = resolve_account_and_location(creds)
 
-    with db.get_conn() as conn:
-        with track_run(conn, "gbp", logger) as state:
-            location_key = upsert_location(conn, account_id, location_id, location_name)
+        with db.get_conn() as conn:
+            with track_run(conn, "gbp", logger) as state:
+                location_key = upsert_location(conn, account_id, location_id, location_name)
 
-            perf_rows = fetch_performance(creds, location_id)
-            n1 = load_performance(conn, location_key, perf_rows)
+                perf_rows = fetch_performance(creds, location_id)
+                n1 = load_performance(conn, location_key, perf_rows)
 
-            n2 = 0
-            try:
-                reviews = fetch_reviews(creds, account_id, location_id)
-                n2 = load_reviews(conn, location_key, reviews)
-            except HttpError as exc:
-                logger.warning("Reviews fetch failed (legacy mybusiness v4 API may not be enabled): %s", exc)
+                n2 = 0
+                try:
+                    reviews = fetch_reviews(creds, account_id, location_id)
+                    n2 = load_reviews(conn, location_key, reviews)
+                except HttpError as exc:
+                    logger.warning("Reviews fetch failed (legacy mybusiness v4 API may not be enabled): %s", exc)
 
-            state["rows_loaded"] = n1 + n2
-        conn.commit()
-    return state["rows_loaded"]
+                state["rows_loaded"] = n1 + n2
+            conn.commit()
+        return state["rows_loaded"]
+    except HttpError as exc:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status in _SKIPPABLE_STATUSES:
+            reason = "quota exceeded" if status == 429 else "forbidden"
+            logger.warning("GBP API returned HTTP %s (%s) - skipping GBP ETL for this run: %s", status, reason, exc)
+            return None
+        raise
 
 
 if __name__ == "__main__":
