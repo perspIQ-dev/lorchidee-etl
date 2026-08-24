@@ -127,8 +127,8 @@ mail/alerting notices.
 ### Email notifications
 
 Both via [Resend](https://resend.com) (`alerting.py`), from
-`lorchidee@send.lorchidee.ca` to `yanis@perspiq.ca`. Requires
-`RESEND_API_KEY` in `.env` and the sending domain (`send.lorchidee.ca`)
+`etl@send.perspiq.ca` to `yanis@perspiq.ca`. Requires
+`RESEND_API_KEY` in `.env` and the sending domain (`send.perspiq.ca`)
 verified in Resend; if the key is unset, both just log a warning and move
 on rather than failing the run.
 
