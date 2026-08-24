@@ -1,14 +1,13 @@
 """Email alerting for ETL runs, via the Resend HTTP API.
 
-Uses urllib (stdlib) instead of adding `requests` as a dependency - this is
-a single POST request, not worth a new package for.
+Posts via `curl` (subprocess) rather than urllib: Resend rejects urllib's
+default User-Agent, curl works fine.
 """
 from __future__ import annotations
 
 import json
 import logging
-import urllib.error
-import urllib.request
+import subprocess
 
 import config
 
@@ -39,24 +38,32 @@ def _send_email(to: str, subject: str, body: str, *, context: str) -> None:
         }
     ).encode("utf-8")
 
-    request = urllib.request.Request(
-        RESEND_API_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {config.RESEND_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    curl_cmd = [
+        "curl", "-sS", "--max-time", "15",
+        "-X", "POST", RESEND_API_URL,
+        "-H", f"Authorization: Bearer {config.RESEND_API_KEY}",
+        "-H", "Content-Type: application/json",
+        "-d", "@-",
+        "-w", "\n%{http_code}",
+    ]
     try:
-        with urllib.request.urlopen(request, timeout=15) as resp:
-            resp.read()
-        logger.info("Sent %s email to %s", context, to)
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        logger.error("Resend API returned HTTP %s for %s email: %s", exc.code, context, detail)
-    except urllib.error.URLError as exc:
-        logger.error("Failed to reach Resend API for %s email: %s", context, exc)
+        result = subprocess.run(curl_cmd, input=payload, capture_output=True, timeout=20)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.error("Failed to run curl for %s email: %s", context, exc)
+        return
+
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        logger.error("curl exited %s for %s email: %s", result.returncode, context, stderr)
+        return
+
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    resp_body, _, status_code = stdout.rpartition("\n")
+    if not status_code.isdigit() or not (200 <= int(status_code) < 300):
+        logger.error("Resend API returned HTTP %s for %s email: %s", status_code or "?", context, resp_body.strip())
+        return
+
+    logger.info("Sent %s email to %s", context, to)
 
 
 def send_failure_alert(source: str, traceback_text: str) -> None:
