@@ -171,6 +171,14 @@ path defaults to `dashboard.html` next to the project if `--output` is
 omitted. `dashboard.html` is gitignored - it embeds real revenue figures and
 this repo is public.
 
+A second query pulls `analytics.fact_ga4_traffic_daily` (summed across
+channels to one row per day) for a "Website traffic (GA4)" section - total
+sessions, total users, and a sessions-over-time line chart - filtered by
+the same date-range picker as everything else. That table always exists
+(the schema creates it regardless of whether GA4 has run) but is often
+empty until the service account is set up; the dashboard shows a plain "no
+GA4 data yet" message in that case instead of a zeroed-out section.
+
 ## Looker Studio
 
 Connect Looker Studio's Postgres connector to the salon's Postgres server,

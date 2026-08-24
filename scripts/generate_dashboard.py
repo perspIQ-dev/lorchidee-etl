@@ -46,10 +46,32 @@ QUERY = """
     ORDER BY f.date_key
 """
 
+# etl/ga4_etl.py writes analytics.fact_ga4_traffic_daily at (date, channel)
+# grain - summed across channels here since the dashboard only needs a daily
+# sessions/users total, not a channel breakdown. Table always exists (schema
+# creates it regardless of whether GA4 has run yet), so an empty/no-rows
+# result - GA4 not configured, or genuinely zero traffic - is the normal
+# case to handle, not an error.
+GA4_QUERY = """
+    SELECT dd.date, SUM(f.sessions) AS sessions, SUM(f.total_users) AS total_users
+    FROM analytics.fact_ga4_traffic_daily f
+    LEFT JOIN analytics.dim_date dd ON dd.date_key = f.date_key
+    GROUP BY dd.date
+    ORDER BY dd.date
+"""
+
+
 def fetch_rows() -> list[dict]:
     with db.get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(QUERY)
+            return cur.fetchall()
+
+
+def fetch_ga4_rows() -> list[dict]:
+    with db.get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(GA4_QUERY)
             return cur.fetchall()
 
 
@@ -86,6 +108,24 @@ def build_dashboard_data(rows: list[dict]) -> dict:
         "min_date": dates[0] if dates else None,
         "max_date": dates[-1] if dates else None,
     }
+
+
+def build_ga4_data(rows: list[dict]) -> list[dict]:
+    """One entry per day with GA4 data - empty list if the table has no rows
+    yet (GA4 not configured, or genuinely no traffic), which the dashboard
+    renders as zeroed stats rather than an error."""
+    out = []
+    for r in rows:
+        if r["date"] is None:
+            continue
+        out.append(
+            {
+                "date": r["date"].isoformat(),
+                "sessions": int(r["sessions"] or 0),
+                "users": int(r["total_users"] or 0),
+            }
+        )
+    return out
 
 
 def render_html(data: dict, generated_at: str) -> str:
@@ -144,6 +184,10 @@ _TEMPLATE = r"""<!doctype html>
   }
 
   * { box-sizing: border-box; }
+  /* Elements toggled via the `hidden` DOM property must actually hide:
+     author display rules (e.g. .stat-row's `display: grid`) otherwise beat
+     the UA default [hidden]{display:none} at equal specificity. */
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     background: var(--page);
@@ -214,6 +258,16 @@ _TEMPLATE = r"""<!doctype html>
     gap: 16px;
     margin-bottom: 24px;
   }
+  .stat-row-2 { grid-template-columns: 1fr 1fr; }
+  .stat-row-2 .stat-value { font-size: 22px; }
+
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 36px 0 16px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
   .card {
     background: var(--surface-1);
     border: 1px solid var(--border);
@@ -240,7 +294,7 @@ _TEMPLATE = r"""<!doctype html>
   footer { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
 
   @media (max-width: 760px) {
-    .stat-row { grid-template-columns: 1fr; }
+    .stat-row, .stat-row-2 { grid-template-columns: 1fr; }
     .grid-2 { grid-template-columns: 1fr; }
   }
 </style>
@@ -303,6 +357,28 @@ _TEMPLATE = r"""<!doctype html>
       <p class="chart-subtitle">Share of total revenue</p>
       <div class="chart-canvas-wrap tall"><canvas id="chart-payment-methods"></canvas></div>
     </div>
+  </div>
+
+  <h2 class="section-title">Website traffic (GA4)</h2>
+  <p class="empty-state" id="ga4-empty-state" hidden>
+    No GA4 data yet - source not configured, or nothing has loaded into analytics.fact_ga4_traffic_daily.
+  </p>
+
+  <div class="stat-row stat-row-2" id="ga4-stat-row">
+    <div class="card">
+      <div class="stat-label">Total sessions</div>
+      <div class="stat-value" id="stat-ga4-sessions">-</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Total users</div>
+      <div class="stat-value" id="stat-ga4-users">-</div>
+    </div>
+  </div>
+
+  <div class="card chart-card" id="ga4-chart-card">
+    <p class="chart-title">Sessions over time</p>
+    <p class="chart-subtitle">Daily sessions, all channels</p>
+    <div class="chart-canvas-wrap"><canvas id="chart-ga4-sessions"></canvas></div>
   </div>
 
   <footer>L'Orchidee ETL &middot; scripts/generate_dashboard.py</footer>
@@ -375,8 +451,19 @@ function computeAggregates(transactions) {
   };
 }
 
-function filterTransactions(start, end) {
-  return DATA.transactions.filter((t) => (!start || t.date >= start) && (!end || t.date <= end));
+function filterByDateRange(records, start, end) {
+  return records.filter((r) => (!start || r.date >= start) && (!end || r.date <= end));
+}
+
+function computeGa4Aggregates(ga4Days) {
+  let totalSessions = 0;
+  let totalUsers = 0;
+  const sessionsByDate = ga4Days.map((d) => {
+    totalSessions += d.sessions;
+    totalUsers += d.users;
+    return { date: d.date, sessions: d.sessions };
+  });
+  return { totalSessions, totalUsers, sessionsByDate };
 }
 
 Chart.defaults.font.family = "system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -470,10 +557,52 @@ const paymentMethodsChart = new Chart(document.getElementById('chart-payment-met
   },
 });
 
+const ga4SessionsChart = new Chart(document.getElementById('chart-ga4-sessions'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Sessions',
+      data: [],
+      borderColor: COLORS.series[0],
+      backgroundColor: COLORS.series[0] + '1a',
+      borderWidth: 2,
+      pointRadius: 4,
+      pointBackgroundColor: COLORS.series[0],
+      pointBorderColor: COLORS.surface,
+      pointBorderWidth: 2,
+      tension: 0.15,
+      fill: true,
+    }],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (ctx) => new Intl.NumberFormat('en-CA').format(ctx.parsed.y) } },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: axisTicks },
+      y: { grid: axisGrid, border: { display: false }, ticks: axisTicks, beginAtZero: true },
+    },
+  },
+});
+
 const emptyState = document.getElementById('empty-state');
 
+// GA4 section: whether the table has ANY data at all is checked once (not
+// per date-range change) - an empty filtered slice is a normal "no traffic
+// this range" result, but an empty table overall means the source isn't
+// wired up yet, which gets its own message instead of a misleadingly bare
+// "0 sessions" stat row.
+const ga4HasAnyData = DATA.ga4_daily.length > 0;
+document.getElementById('ga4-empty-state').hidden = ga4HasAnyData;
+document.getElementById('ga4-stat-row').hidden = !ga4HasAnyData;
+document.getElementById('ga4-chart-card').hidden = !ga4HasAnyData;
+
 function render(start, end) {
-  const agg = computeAggregates(filterTransactions(start, end));
+  const agg = computeAggregates(filterByDateRange(DATA.transactions, start, end));
 
   emptyState.hidden = agg.totalTransactions > 0;
 
@@ -497,6 +626,17 @@ function render(start, end) {
   paymentMethodsChart.data.datasets[0].data = agg.revenueByPaymentMethod.map((d) => d.revenue);
   paymentMethodsChart.data.datasets[0].backgroundColor = pmColors;
   paymentMethodsChart.update();
+
+  if (ga4HasAnyData) {
+    const ga4Agg = computeGa4Aggregates(filterByDateRange(DATA.ga4_daily, start, end));
+    document.getElementById('stat-ga4-sessions').textContent =
+      new Intl.NumberFormat('en-CA').format(ga4Agg.totalSessions);
+    document.getElementById('stat-ga4-users').textContent =
+      new Intl.NumberFormat('en-CA').format(ga4Agg.totalUsers);
+    ga4SessionsChart.data.labels = ga4Agg.sessionsByDate.map((d) => d.date);
+    ga4SessionsChart.data.datasets[0].data = ga4Agg.sessionsByDate.map((d) => d.sessions);
+    ga4SessionsChart.update();
+  }
 }
 
 // --- date-range picker: two native <input type="date"> (no external
@@ -578,6 +718,11 @@ def main() -> int:
     skipped = len(rows) - len(data["transactions"])
     if skipped:
         print(f"  skipped {skipped} row(s) with no resolvable date (can't be date-filtered)")
+
+    print("Querying analytics.fact_ga4_traffic_daily...")
+    ga4_rows = fetch_ga4_rows()
+    data["ga4_daily"] = build_ga4_data(ga4_rows)
+    print(f"  {len(data['ga4_daily'])} day(s) of GA4 data" + ("" if data["ga4_daily"] else " (table is empty)"))
 
     from datetime import datetime, timezone
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
