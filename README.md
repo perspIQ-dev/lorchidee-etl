@@ -160,7 +160,12 @@ rendering) - no live DB connection needed to view it, so it can be opened
 locally, served as a static file, or emailed. A start/end date-range picker
 (native `<input type="date">`, plus Last 7/30/90 days and All time presets -
 no charting/date-picker library beyond Chart.js) filters and re-aggregates
-every stat and chart client-side in real time: total revenue, revenue over
+every stat and chart client-side in real time. It defaults to the last 90
+days ending **today** (the viewer's local today, not the dashboard's
+generation date or the last transaction's date - clamped to the earliest
+date in the data if there's less than 90 days of history), so recent GA4
+traffic is visible by default even when the manual transaction log lags
+behind. Total revenue, revenue over
 time, top services by revenue, and a payment-method breakdown all
 re-compute from the same filtered slice, so the numbers always agree with
 each other. "Revenue" per transaction is `price_amount + product_sold_amount`

@@ -653,15 +653,39 @@ const startInput = document.getElementById('start-date');
 const endInput = document.getElementById('end-date');
 const presetButtons = document.querySelectorAll('#filter-presets button');
 
-if (DATA.min_date) { startInput.min = DATA.min_date; endInput.min = DATA.min_date; }
-if (DATA.max_date) { startInput.max = DATA.max_date; endInput.max = DATA.max_date; }
-startInput.value = DATA.min_date || '';
-endInput.value = DATA.max_date || '';
+// "Today" is the viewer's local today (not the date the dashboard was
+// generated on, and not the last transaction's date) - computed from local
+// date parts, not toISOString(), which is UTC and can land on the wrong
+// calendar day depending on the viewer's timezone.
+function todayLocalISODate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+const todayStr = todayLocalISODate();
+
+// Selectable range spans every date in the data (transactions and GA4
+// combined - GA4 rows are often more recent than the last manual
+// transaction, which is exactly what was hiding recent GA4 data before),
+// widened to include today so "today" is always pickable even on days
+// with no data yet.
+const allDataDates = [...DATA.transactions.map((t) => t.date), ...DATA.ga4_daily.map((d) => d.date)];
+const earliestDataDate = allDataDates.length ? allDataDates.reduce((a, b) => (a < b ? a : b)) : todayStr;
+const latestDataDate = allDataDates.length ? allDataDates.reduce((a, b) => (a > b ? a : b)) : todayStr;
+const pickerMin = earliestDataDate < todayStr ? earliestDataDate : todayStr;
+const pickerMax = latestDataDate > todayStr ? latestDataDate : todayStr;
+
+startInput.min = pickerMin;
+startInput.max = pickerMax;
+endInput.min = pickerMin;
+endInput.max = pickerMax;
 
 function syncConstraints() {
   // keep the native picker from allowing an inverted range
-  startInput.max = endInput.value || DATA.max_date || '';
-  endInput.min = startInput.value || DATA.min_date || '';
+  startInput.max = endInput.value || pickerMax;
+  endInput.min = startInput.value || pickerMin;
 }
 
 function setActivePreset(preset) {
@@ -670,6 +694,23 @@ function setActivePreset(preset) {
 
 function renderFromInputs() {
   render(startInput.value || null, endInput.value || null);
+}
+
+function applyPreset(preset) {
+  if (preset === 'all') {
+    startInput.value = pickerMin;
+    endInput.value = pickerMax;
+  } else {
+    const end = new Date(todayStr + 'T00:00:00');
+    const start = new Date(end);
+    start.setDate(start.getDate() - (Number(preset) - 1));
+    const minDate = new Date(pickerMin + 'T00:00:00');
+    startInput.value = (start < minDate ? minDate : start).toISOString().slice(0, 10);
+    endInput.value = todayStr;
+  }
+  syncConstraints();
+  setActivePreset(preset);
+  renderFromInputs();
 }
 
 startInput.addEventListener('input', () => {
@@ -683,27 +724,13 @@ endInput.addEventListener('input', () => {
   renderFromInputs();
 });
 
-presetButtons.forEach((btn) => btn.addEventListener('click', () => {
-  const preset = btn.dataset.preset;
-  if (preset === 'all' || !DATA.max_date) {
-    startInput.value = DATA.min_date || '';
-    endInput.value = DATA.max_date || '';
-  } else {
-    const end = new Date(DATA.max_date + 'T00:00:00');
-    const start = new Date(end);
-    start.setDate(start.getDate() - (Number(preset) - 1));
-    const minDate = DATA.min_date ? new Date(DATA.min_date + 'T00:00:00') : start;
-    startInput.value = (start < minDate ? minDate : start).toISOString().slice(0, 10);
-    endInput.value = DATA.max_date;
-  }
-  syncConstraints();
-  setActivePreset(preset);
-  renderFromInputs();
-}));
+presetButtons.forEach((btn) => btn.addEventListener('click', () => applyPreset(btn.dataset.preset)));
 
-syncConstraints();
-setActivePreset('all');
-renderFromInputs();
+// Default view: last 90 days ending today (clamped to the earliest data
+// date if there isn't 90 days of history yet) - same as clicking "Last 90
+// days" - rather than the old default of the last transaction's date
+// range, which hid recent GA4-only data.
+applyPreset('90');
 </script>
 </body>
 </html>
