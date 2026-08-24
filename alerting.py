@@ -16,11 +16,9 @@ logger = logging.getLogger("alerting")
 
 RESEND_API_URL = "https://api.resend.com/emails"
 ALERT_FROM = "lorchidee@send.lorchidee.ca"
+ALERT_TO = "yanis@perspiq.ca"
 
-FAILURE_TO = "yanou.yadi@gmail.com"
 FAILURE_SUBJECT = "ETL Alert: lorchidee-etl failed"
-
-SUCCESS_TO = "yanis@perspiq.ca"
 SUCCESS_SUBJECT = "ETL lorchidee-etl — succès"
 
 
@@ -63,8 +61,8 @@ def _send_email(to: str, subject: str, body: str, *, context: str) -> None:
 
 def send_failure_alert(source: str, traceback_text: str) -> None:
     body = f"ETL source: {source}\n\n{traceback_text}"
-    _send_email(FAILURE_TO, FAILURE_SUBJECT, body, context=f"failure alert (source={source})")
+    _send_email(ALERT_TO, FAILURE_SUBJECT, body, context=f"failure alert (source={source})")
 
 
 def send_success_alert(summary: str) -> None:
-    _send_email(SUCCESS_TO, SUCCESS_SUBJECT, summary, context="success notification")
+    _send_email(ALERT_TO, SUCCESS_SUBJECT, summary, context="success notification")
