@@ -124,16 +124,22 @@ VPS) rather than by any of the scheduled ETL code.
 doesn't block the others), and exits non-zero if anything failed — so cron's
 mail/alerting notices.
 
-### Failure alerting
+### Email notifications
 
-Whenever a source fails, `run_all.py` emails `yanou.yadi@gmail.com` (from
-`lorchidee@send.lorchidee.ca`) via [Resend](https://resend.com)
-(`alerting.py`), subject `ETL Alert: lorchidee-etl failed`, body is the full
-traceback. Requires `RESEND_API_KEY` in `.env` and the sending domain
-(`send.lorchidee.ca`) verified in Resend; if the key is unset, it just logs
-a warning and moves on rather than failing the run. A failed source is still
-always logged in `analytics.etl_run_log` regardless of whether the email
-sends.
+Both via [Resend](https://resend.com) (`alerting.py`), from
+`lorchidee@send.lorchidee.ca`. Requires `RESEND_API_KEY` in `.env` and the
+sending domain (`send.lorchidee.ca`) verified in Resend; if the key is
+unset, both just log a warning and move on rather than failing the run.
+
+- **On failure** (any source): emails `yanou.yadi@gmail.com`, subject `ETL
+  Alert: lorchidee-etl failed`, body is the full traceback. The failed
+  source is still always logged in `analytics.etl_run_log` regardless of
+  whether the email sends.
+- **On full success** (every source ran or was cleanly skipped, none
+  failed): emails `yanis@perspiq.ca`, subject `ETL lorchidee-etl —
+  succès`, body lists the run date and each source's row count (or
+  "skipped (not configured)" for GA4/GBP before their service account is
+  set up).
 
 ## Daily cron
 

@@ -148,17 +148,19 @@ def load_page_rows(conn, rows: list[dict]) -> int:
     return loaded
 
 
-def run() -> None:
+def run() -> int | None:
+    """Returns rows loaded, or None if the source was skipped (not an error -
+    see the two guards below)."""
     import db
 
     if not config.GA4_PROPERTY_ID:
         logger.warning("GA4_PROPERTY_ID not set - skipping GA4 ETL")
-        return
+        return None
     if not service_account_available():
         logger.warning(
             "Service account file not found at %s - skipping GA4 ETL", config.GOOGLE_SERVICE_ACCOUNT_FILE
         )
-        return
+        return None
 
     client = _client()
     with db.get_conn() as conn:
@@ -169,6 +171,7 @@ def run() -> None:
             n2 = load_page_rows(conn, page_rows)
             state["rows_loaded"] = n1 + n2
         conn.commit()
+    return state["rows_loaded"]
 
 
 if __name__ == "__main__":

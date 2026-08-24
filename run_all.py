@@ -1,13 +1,15 @@
 """Runs all four ETL sources in sequence. One source failing does not stop the
 others - each is isolated and logged to analytics.etl_run_log, and this
 script exits non-zero if any source failed (so cron mail/alerting notices).
-Each failure also sends an email alert via Resend (see alerting.py).
+Each failure sends an email alert via Resend; a fully successful run sends a
+brief success notification instead (see alerting.py).
 """
 import logging
 import sys
 import traceback
+from datetime import datetime
 
-from alerting import send_failure_alert
+from alerting import send_failure_alert, send_success_alert
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("run_all")
@@ -26,13 +28,24 @@ SOURCE_MODULES = {
 SOURCES = list(SOURCE_MODULES)
 
 
+def build_success_summary(started_at: datetime, results: dict) -> str:
+    lines = [f"Date: {started_at:%Y-%m-%d %H:%M}", "", "Sources:"]
+    for source in SOURCES:
+        rows = results.get(source)
+        lines.append(f"  - {source}: skipped (not configured)" if rows is None else f"  - {source}: {rows} rows")
+    return "\n".join(lines)
+
+
 def main() -> int:
+    started_at = datetime.now()
     failures = []
+    results: dict[str, int | None] = {}
+
     for source in SOURCES:
         logger.info("=== Running %s ETL ===", source)
         try:
             module = __import__(SOURCE_MODULES[source], fromlist=["run"])
-            module.run()
+            results[source] = module.run()
         except Exception:  # noqa: BLE001 - keep going, report at the end
             tb = traceback.format_exc()
             logger.exception("%s ETL failed", source)
@@ -44,6 +57,7 @@ def main() -> int:
         return 1
 
     logger.info("ETL run completed successfully for all sources")
+    send_success_alert(build_success_summary(started_at, results))
     return 0
 
 

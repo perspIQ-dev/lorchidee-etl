@@ -58,7 +58,7 @@ def fetch_rows_via_api_key() -> list[list[str]]:
     return resp.get("values", [])
 
 
-def run(dry_run: bool = False) -> None:
+def run(dry_run: bool = False) -> int:
     """Entry point used both by the CLI below and by run_all.py (which calls
     this in place of etl/sheets_etl.py, since this is the version that
     actually has working credentials for the Sheet right now). Raises on
@@ -91,6 +91,7 @@ def run(dry_run: bool = False) -> None:
         logger.info("Committed %s rows to analytics.fact_manual_transactions", rows_loaded)
 
     print_summary(raw_rows, rows_loaded, dry_run=dry_run)
+    return rows_loaded
 
 
 def main() -> int:

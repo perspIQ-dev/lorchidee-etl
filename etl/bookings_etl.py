@@ -158,7 +158,7 @@ def load_bookings(conn: psycopg.Connection, rows: list[dict]) -> int:
     return loaded
 
 
-def run() -> None:
+def run() -> int:
     import db
 
     with db.get_conn() as conn:
@@ -169,6 +169,7 @@ def run() -> None:
             logger.info("Fetched %s source bookings", len(rows))
             state["rows_loaded"] = load_bookings(conn, rows)
         conn.commit()
+    return state["rows_loaded"]
 
 
 if __name__ == "__main__":

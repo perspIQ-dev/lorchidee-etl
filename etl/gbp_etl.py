@@ -178,14 +178,16 @@ def load_reviews(conn, location_key: int, reviews: list[dict]) -> int:
     return loaded
 
 
-def run() -> None:
+def run() -> int | None:
+    """Returns rows loaded, or None if the source was skipped (not an error -
+    see the guard below)."""
     import db
 
     if not service_account_available():
         logger.warning(
             "Service account file not found at %s - skipping GBP ETL", config.GOOGLE_SERVICE_ACCOUNT_FILE
         )
-        return
+        return None
 
     creds = _creds()
     account_id, location_id, location_name = resolve_account_and_location(creds)
@@ -206,6 +208,7 @@ def run() -> None:
 
             state["rows_loaded"] = n1 + n2
         conn.commit()
+    return state["rows_loaded"]
 
 
 if __name__ == "__main__":
