@@ -52,12 +52,20 @@ QUERY = """
 # creates it regardless of whether GA4 has run yet), so an empty/no-rows
 # result - GA4 not configured, or genuinely zero traffic - is the normal
 # case to handle, not an error.
+#
+# date_key is a plain int in YYYYMMDD form (e.g. 20260824), parsed directly
+# with TO_DATE rather than joined against dim_date - a join that doesn't
+# match silently drops the row (build_ga4_data skips rows with no date),
+# which is exactly what was producing "0 sessions / 0 users" despite the
+# table having data.
 GA4_QUERY = """
-    SELECT dd.date, SUM(f.sessions) AS sessions, SUM(f.total_users) AS total_users
+    SELECT
+        TO_DATE(f.date_key::text, 'YYYYMMDD') AS date,
+        SUM(f.sessions) AS sessions,
+        SUM(f.total_users) AS total_users
     FROM analytics.fact_ga4_traffic_daily f
-    LEFT JOIN analytics.dim_date dd ON dd.date_key = f.date_key
-    GROUP BY dd.date
-    ORDER BY dd.date
+    GROUP BY f.date_key
+    ORDER BY f.date_key
 """
 
 
