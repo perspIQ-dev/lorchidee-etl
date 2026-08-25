@@ -8,6 +8,7 @@ import logging
 import sys
 import traceback
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from alerting import send_failure_alert, send_success_alert
 
@@ -29,7 +30,8 @@ SOURCES = list(SOURCE_MODULES)
 
 
 def build_success_summary(started_at: datetime, results: dict) -> str:
-    lines = [f"Date: {started_at:%Y-%m-%d %H:%M}", "", "Sources:"]
+    started_at_et = started_at.astimezone(ZoneInfo("America/Toronto"))
+    lines = [f"Date: {started_at_et:%Y-%m-%d %H:%M}", "", "Sources:"]
     for source in SOURCES:
         rows = results.get(source)
         lines.append(f"  - {source}: skipped (not configured)" if rows is None else f"  - {source}: {rows} rows")
