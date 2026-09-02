@@ -69,6 +69,20 @@ GA4_QUERY = """
 """
 
 
+# public.bookings lives in the same lorchidee_bookings database as the
+# analytics schema, so this reuses the one connection - no second DSN needed.
+# Cancelled rows are excluded outright: a cancellation isn't a no-show, and
+# counting it either way would skew the rate.
+BOOKINGS_QUERY = """
+    SELECT
+        status,
+        COUNT(*) AS count
+    FROM public.bookings
+    WHERE cancelled = false
+    GROUP BY status
+"""
+
+
 def fetch_rows() -> list[dict]:
     with db.get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -80,6 +94,13 @@ def fetch_ga4_rows() -> list[dict]:
     with db.get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(GA4_QUERY)
+            return cur.fetchall()
+
+
+def fetch_bookings_rows() -> list[dict]:
+    with db.get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(BOOKINGS_QUERY)
             return cur.fetchall()
 
 
@@ -136,20 +157,42 @@ def build_ga4_data(rows: list[dict]) -> list[dict]:
     return out
 
 
+def build_bookings_data(rows: list[dict]) -> dict:
+    """Counts per status, as a fixed all-time rollup - unlike the transaction
+    stats these aren't sliced by the date-range picker, since the query groups
+    by status rather than by date and has nothing to filter client-side."""
+    counts = {(r["status"] or ""): int(r["count"] or 0) for r in rows}
+    confirmed = counts.get("confirmed", 0)
+    no_show = counts.get("no_show", 0)
+    total = confirmed + no_show
+    return {
+        "confirmed": confirmed,
+        "no_show": no_show,
+        "total": total,
+        "no_show_rate": (no_show / total * 100) if total else 0.0,
+    }
+
+
 def render_html(data: dict, generated_at: str) -> str:
     # `</` inside the JSON (e.g. a service/payment-method name) would
     # otherwise prematurely close the <script> tag it's embedded in.
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    html = _TEMPLATE.replace("__DASHBOARD_DATA_JSON__", data_json).replace("__GENERATED_AT__", generated_at)
+    bookings_json = json.dumps(data.get("bookings") or {}, ensure_ascii=False).replace("</", "<\\/")
+    html = (
+        _TEMPLATE
+        .replace("__DASHBOARD_DATA_JSON__", data_json)
+        .replace("__BOOKINGS_DATA_JSON__", bookings_json)
+        .replace("__GENERATED_AT__", generated_at)
+    )
     return html
 
 
 _TEMPLATE = r"""<!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>L'Orchidee - Revenue Dashboard</title>
+<title>L'Orchidée — Tableau de bord</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -310,30 +353,30 @@ _TEMPLATE = r"""<!doctype html>
 <body>
 <div class="wrap">
   <header>
-    <h1>L'Orchidee &mdash; Revenue Dashboard</h1>
-    <div class="subtitle">Source: analytics.fact_manual_transactions &middot; generated __GENERATED_AT__</div>
+    <h1>L'Orchidée &mdash; Tableau de bord</h1>
+    <div class="subtitle">Source : analytics.fact_manual_transactions &middot; généré le __GENERATED_AT__</div>
   </header>
 
   <div class="filter-row">
     <div class="filter-field">
-      <label for="start-date">Start date</label>
+      <label for="start-date">Date de début</label>
       <input type="date" id="start-date">
     </div>
     <div class="filter-field">
-      <label for="end-date">End date</label>
+      <label for="end-date">Date de fin</label>
       <input type="date" id="end-date">
     </div>
     <div class="filter-presets" id="filter-presets">
-      <button type="button" data-preset="7">Last 7 days</button>
-      <button type="button" data-preset="30">Last 30 days</button>
-      <button type="button" data-preset="90">Last 90 days</button>
-      <button type="button" data-preset="all">All time</button>
+      <button type="button" data-preset="7">7 derniers jours</button>
+      <button type="button" data-preset="30">30 derniers jours</button>
+      <button type="button" data-preset="90">90 derniers jours</button>
+      <button type="button" data-preset="all">Tout afficher</button>
     </div>
   </div>
 
   <div class="stat-row">
     <div class="card hero">
-      <div class="stat-label">Total revenue</div>
+      <div class="stat-label">Revenus totaux</div>
       <div class="stat-value" id="stat-total-revenue">-</div>
     </div>
     <div class="card">
@@ -341,59 +384,77 @@ _TEMPLATE = r"""<!doctype html>
       <div class="stat-value" id="stat-total-transactions">-</div>
     </div>
     <div class="card">
-      <div class="stat-label">Average transaction</div>
+      <div class="stat-label">Transaction moyenne</div>
       <div class="stat-value" id="stat-avg-transaction">-</div>
     </div>
   </div>
 
-  <p class="empty-state" id="empty-state" hidden>No transactions in this date range.</p>
+  <p class="empty-state" id="empty-state" hidden>Aucune transaction dans cette plage de dates.</p>
 
   <div class="card chart-card">
-    <p class="chart-title">Revenue over time</p>
-    <p class="chart-subtitle">Daily total, service charges + product upsells</p>
+    <p class="chart-title">Revenus dans le temps</p>
+    <p class="chart-subtitle">Total quotidien, services + ventes de produits</p>
     <div class="chart-canvas-wrap"><canvas id="chart-revenue-time"></canvas></div>
   </div>
 
   <div class="grid-2">
     <div class="card chart-card">
-      <p class="chart-title">Top services by revenue</p>
-      <p class="chart-subtitle">Highest-earning services, total revenue</p>
+      <p class="chart-title">Services les plus rentables</p>
+      <p class="chart-subtitle">Services générant le plus de revenus</p>
       <div class="chart-canvas-wrap tall"><canvas id="chart-top-services"></canvas></div>
     </div>
     <div class="card chart-card">
-      <p class="chart-title">Payment method breakdown</p>
-      <p class="chart-subtitle">Share of total revenue</p>
+      <p class="chart-title">Modes de paiement</p>
+      <p class="chart-subtitle">Répartition des revenus par mode de paiement</p>
       <div class="chart-canvas-wrap tall"><canvas id="chart-payment-methods"></canvas></div>
     </div>
   </div>
 
-  <h2 class="section-title">Website traffic (GA4)</h2>
+  <h2 class="section-title">Trafic web (GA4)</h2>
   <p class="empty-state" id="ga4-empty-state" hidden>
-    No GA4 data yet - source not configured, or nothing has loaded into analytics.fact_ga4_traffic_daily.
+    Aucune donnée GA4 pour l'instant — source non configurée ou rien chargé dans analytics.fact_ga4_traffic_daily.
   </p>
 
   <div class="stat-row stat-row-2" id="ga4-stat-row">
     <div class="card">
-      <div class="stat-label">Total sessions</div>
+      <div class="stat-label">Sessions totales</div>
       <div class="stat-value" id="stat-ga4-sessions">-</div>
     </div>
     <div class="card">
-      <div class="stat-label">Total users</div>
+      <div class="stat-label">Utilisateurs totaux</div>
       <div class="stat-value" id="stat-ga4-users">-</div>
     </div>
   </div>
 
   <div class="card chart-card" id="ga4-chart-card">
-    <p class="chart-title">Sessions over time</p>
-    <p class="chart-subtitle">Daily sessions, all channels</p>
+    <p class="chart-title">Sessions dans le temps</p>
+    <p class="chart-subtitle">Sessions quotidiennes, tous canaux</p>
     <div class="chart-canvas-wrap"><canvas id="chart-ga4-sessions"></canvas></div>
   </div>
 
-  <footer>L'Orchidee ETL &middot; scripts/generate_dashboard.py</footer>
+  <h2 class="section-title">Réservations en ligne</h2>
+
+  <div class="stat-row">
+    <div class="card">
+      <div class="stat-label">Réservations confirmées</div>
+      <div class="stat-value" id="stat-bookings-confirmed">-</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Non-présentations</div>
+      <div class="stat-value" id="stat-bookings-no-show">-</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Taux de non-présentation</div>
+      <div class="stat-value" id="stat-bookings-no-show-rate">-</div>
+    </div>
+  </div>
+
+  <footer>L'Orchidée ETL &middot; scripts/generate_dashboard.py</footer>
 </div>
 
 <script>
 const DATA = __DASHBOARD_DATA_JSON__;
+const BOOKINGS = __BOOKINGS_DATA_JSON__;
 const TOP_N_SERVICES = 8;
 const MAX_PIE_SLICES = 6;
 
@@ -486,7 +547,7 @@ const revenueTimeChart = new Chart(document.getElementById('chart-revenue-time')
   data: {
     labels: [],
     datasets: [{
-      label: 'Revenue',
+      label: 'Revenus',
       data: [],
       borderColor: COLORS.series[0],
       backgroundColor: COLORS.series[0] + '1a',
@@ -518,7 +579,7 @@ const topServicesChart = new Chart(document.getElementById('chart-top-services')
   data: {
     labels: [],
     datasets: [{
-      label: 'Revenue',
+      label: 'Revenus',
       data: [],
       backgroundColor: COLORS.series[0],
       borderRadius: 4,
@@ -608,6 +669,15 @@ const ga4HasAnyData = DATA.ga4_daily.length > 0;
 document.getElementById('ga4-empty-state').hidden = ga4HasAnyData;
 document.getElementById('ga4-stat-row').hidden = !ga4HasAnyData;
 document.getElementById('ga4-chart-card').hidden = !ga4HasAnyData;
+
+// Online bookings: an all-time rollup, so it renders once here rather than
+// inside render() - the date-range picker doesn't apply to it.
+const countFmt = new Intl.NumberFormat('en-CA');
+const rateFmt = new Intl.NumberFormat('en-CA', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+document.getElementById('stat-bookings-confirmed').textContent = countFmt.format(BOOKINGS.confirmed || 0);
+document.getElementById('stat-bookings-no-show').textContent = countFmt.format(BOOKINGS.no_show || 0);
+document.getElementById('stat-bookings-no-show-rate').textContent =
+  rateFmt.format(BOOKINGS.no_show_rate || 0) + ' %';
 
 function render(start, end) {
   const agg = computeAggregates(filterByDateRange(DATA.transactions, start, end));
@@ -758,6 +828,15 @@ def main() -> int:
     ga4_rows = fetch_ga4_rows()
     data["ga4_daily"] = build_ga4_data(ga4_rows)
     print(f"  {len(data['ga4_daily'])} day(s) of GA4 data" + ("" if data["ga4_daily"] else " (table is empty)"))
+
+    print("Querying public.bookings...")
+    bookings_rows = fetch_bookings_rows()
+    data["bookings"] = build_bookings_data(bookings_rows)
+    print(
+        f"  {data['bookings']['confirmed']} confirmed, "
+        f"{data['bookings']['no_show']} no-show "
+        f"({data['bookings']['total']} total, {data['bookings']['no_show_rate']:.1f}% no-show rate)"
+    )
 
     from datetime import datetime, timezone
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
